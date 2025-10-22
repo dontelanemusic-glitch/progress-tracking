@@ -1,0 +1,2 @@
+const AIRTABLE_PAT = "{{AIRTABLE_PAT}}";
+const AIRTABLE_BASE_ID = "{{AIRTABLE_BASE_ID}}";
