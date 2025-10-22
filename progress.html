@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+<meta charset="UTF-8">
+<title>מעקב התקדמות עובדים</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family: Arial, sans-serif; margin: 20px; direction: rtl; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+th, td { border: 1px solid #999; padding: 8px; text-align: center; }
+th { background-color: #eee; }
+form { margin-bottom: 20px; }
+label { margin-right: 10px; }
+button { margin-right: 10px; }
+</style>
+</head>
+<body>
+
+<h2>מעקב התקדמות עובדים – ליקוט מוצרים</h2>
+
+<form id="updateForm">
+  <label>יום:
+    <select id="daySelect"></select>
+  </label>
+  <label>עובד:
+    <select id="employeeSelect"></select>
+  </label>
+  <label>שורות:
+    <input type="number" id="linesInput" min="0" required>
+  </label>
+  <button type="submit">עדכן</button>
+  <button type="button" id="addEmployee">הוסף עובד</button>
+  <button type="button" id="deleteEmployee">מחק עובד</button>
+</form>
+
+<label>מתאריך: <input type="date" id="fromDate"></label>
+<label>עד תאריך: <input type="date" id="toDate"></label>
+<button type="button" id="filterButton">עדכן פילטר</button>
+<p id="totalSum"></p>
+
+<table id="progressTable">
+  <thead>
+    <tr id="tableHead"></tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<canvas id="weeklyChart" height="150"></canvas>
+
+<script>
+// =====================
+// משתנים
+// =====================
+let data = [];
+let employees = ["לאירו","אודיה","צארוקה","קאסון","טרינדו","דונסנאט","נאלין"];
+let days = ["ראשון","שני","שלישי","רביעי","חמישי","שישי"];
+let chart;
+
+// =====================
+// פונקציות עזר
+// =====================
+function renderDayOptions() {
+  const daySelect = document.getElementById("daySelect");
+  daySelect.innerHTML = "";
+  days.forEach(d => daySelect.innerHTML += `<option>${d}</option>`);
+}
+
+function renderEmployeeOptions() {
+  const employeeSelect = document.getElementById("employeeSelect");
+  employeeSelect.innerHTML = "";
+  employees.forEach(e => employeeSelect.innerHTML += `<option value="${e}">${e}</option>`);
+}
+
+function renderTable(filteredData=null) {
+  const tbody = document.querySelector("#progressTable tbody");
+  const head = document.querySelector("#tableHead");
+  tbody.innerHTML = "";
+  head.innerHTML = "<th>יום</th>" + employees.map(e=>`<th>${e}</th>`).join("") + "<th>סה\"כ</th>";
+  const useData = filteredData || data;
+  useData.forEach(row => {
+    let total = employees.reduce((sum,e)=>sum + (row[e]||0),0);
+    tbody.innerHTML += `<tr>
+      <td>${row.day}</td>
+      ${employees.map(e=>`<td>${row[e]||0}</td>`).join("")}
+      <td>${total}</td>
+    </tr>`;
+  });
+}
+
+function renderChart(filteredData=null) {
+  const ctx = document.getElementById('weeklyChart').getContext('2d');
+  const useData = filteredData || data;
+  const labels = useData.map(r=>r.day);
+  const datasets = employees.map((e,idx)=>({
+    label:e,
+    data: useData.map(r=>r[e]||0),
+    borderColor: ['red','blue','green','orange','purple','brown','pink'][idx%7],
+    fill:false
+  }));
+  if(chart) chart.destroy();
+  chart = new Chart(ctx,{
+    type:'line',
+    data:{labels,datasets},
+    options:{responsive:true,plugins:{legend:{position:'top'}},scales:{y:{beginAtZero:true}}}
+  });
+}
+
+function updateData(day, employee, value) {
+  let row = data.find(r=>r.day===day);
+  if(!row) { row={day}; data.push(row); }
+  row[employee] = value;
+}
+
+function filterDataByDate(from,to) {
+  const dayIndex = {"ראשון":1,"שני":2,"שלישי":3,"רביעי":4,"חמישי":5,"שישי":6};
+  const fromIdx = from ? dayIndex[from] : 1;
+  const toIdx = to ? dayIndex[to] : 6;
+  return data.filter(r=>dayIndex[r.day]>=fromIdx && dayIndex[r.day]<=toIdx);
+}
+
+function calculateTotal(filteredData=null) {
+  const useData = filteredData || data;
+  let total = useData.reduce((sum,row)=>sum + employees.reduce((s,e)=>s+(row[e]||0),0),0);
+  document.getElementById("totalSum").innerText = "סה\"כ שורות לעובדים בפרק זמן: "+total;
+}
+
+// =====================
+// אירועים
+// =====================
+document.getElementById("updateForm").addEventListener("submit", e=>{
+  e.preventDefault();
+  const day=document.getElementById("daySelect").value;
+  const employee=document.getElementById("employeeSelect").value;
+  const value=parseInt(document.getElementById("linesInput").value);
+  updateData(day,employee,value);
+  renderTable();
+  renderChart();
+  calculateTotal();
+  document.getElementById("linesInput").value="";
+});
+
+document.getElementById("addEmployee").addEventListener("click", ()=>{
+  const name=prompt("שם עובד חדש:");
+  if(name && !employees.includes(name)) { employees.push(name); renderEmployeeOptions(); renderTable(); renderChart(); }
+});
+
+document.getElementById("deleteEmployee").addEventListener("click", ()=>{
+  const name=document.getElementById("employeeSelect").value;
+  if(confirm(`האם למחוק את העובד ${name}?`)){
+    employees = employees.filter(e=>e!==name);
+    data.forEach(r=>delete r[name]);
+    renderEmployeeOptions(); renderTable(); renderChart(); calculateTotal();
+  }
+});
+
+document.getElementById("filterButton").addEventListener("click", ()=>{
+  const from=document.getElementById("fromDate").value;
+  const to=document.getElementById("toDate").value;
+  const filtered = filterDataByDate(from,to);
+  renderTable(filtered);
+  renderChart(filtered);
+  calculateTotal(filtered);
+});
+
+// =====================
+// טעינת JSON חיצוני מ-Airtable עם Personal Access Token
+// =====================
+async function loadData() {
+  const AIRTABLE_BASE_ID = "appvmvfYyz02Hh58v";
+  const AIRTABLE_PAT = "pat7LBeJcDbrHIqNH.5834e216b0b4614402b9adaf9578b5c1ffd4a31b8f9b4970eae44464e5b845c6";
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/Progress`;
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${AIRTABLE_PAT}` }
+    });
+    const json = await res.json();
+    data = json.records.map(r=>({
+      day: r.fields.יום,
+      לאירו: r.fields.לאירו || 0,
+      אודיה: r.fields.אודיה || 0,
+      צארוקה: r.fields.צארוקה || 0,
+      קאסון: r.fields.קאסון || 0,
+      טרינדו: r.fields.טרינדו || 0,
+      דונסנאט: r.fields.דונסנאט || 0,
+      נאלין: r.fields.נאלין || 0
+    }));
+  } catch(e){ console.log("שגיאה בטעינת נתונים:", e); data=[]; }
+  renderDayOptions();
+  renderEmployeeOptions();
+  renderTable();
+  renderChart();
+  calculateTotal();
+}
+
+loadData();
+</script>
+</body>
+</html>
